@@ -108,10 +108,8 @@ jobs:
 
       - name: Create GitHub Release
         if: success() && github.ref == 'refs/heads/main'
-        uses: soft props/action-github@v1
+        uses: softprops/action-gh-release@v2
         with:
-          tag_name: v${{ steps.version.outputs.new_version }}
-          release_name: v${{ steps.version.outputs.new_version }}
           files: target/release/blueak-session-manager
           body_path: CHANGELOG.md
           draft: false
