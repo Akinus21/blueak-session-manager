@@ -1,4 +1,4 @@
-use anyhow::Context;
+use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::Path;
 
@@ -33,9 +33,9 @@ pub struct SavedWindow {
 impl Session {
     pub fn load(path: &Path) -> anyhow::Result<Self> {
         let content = fs::read_to_string(path)
-            .context("failed to read session file")?;
+            .with_context(|| format!("failed to read session file: {}", path.display()))?;
         let session: Session = serde_json::from_str(&content)
-            .with_context(|| "failed to parse session file".to_string())?;
+            .with_context(|| "failed to parse session file")?;
         Ok(session)
     }
 

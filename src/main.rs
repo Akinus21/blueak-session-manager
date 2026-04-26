@@ -43,7 +43,7 @@ enum AppMapCommands {
 fn get_session_path() -> std::path::PathBuf {
     BaseDirectories::with_prefix("niri-session")
         .map(|xdg| {
-            let mut path = xdg.get_data_dir().to_path_buf();
+            let mut path = xdg.get_data_home();
             path.push("niri-session");
             path.push("session.json");
             path

@@ -160,7 +160,7 @@ pub fn restore(
     }
 
     if let Some(&(ref _pending, idx)) = pending.iter().find(|(_, idx)| session.windows[*idx].is_focused) {
-        if let Some(&window_id) = matched_windows.get(idx) {
+        if let Some(&window_id) = matched_windows.get(&idx) {
             if let Err(e) = ipc::focus_window(window_id) {
                 log::warn!("failed to focus window: {}", e);
             }

@@ -1,12 +1,14 @@
+use anyhow::Context;
 use niri_ipc::{Request, Response};
 use niri_ipc::socket::Socket;
 use std::env;
 
 fn send_request(request: Request) -> anyhow::Result<Response> {
-    let socket_path = env::var(niri_ipc::socket::SOCKET_PATH_ENV)
+    let _socket_path = env::var(niri_ipc::socket::SOCKET_PATH_ENV)
         .context("NIRI_SOCKET not set — is niri running?")?;
     let mut socket = Socket::connect()?;
-    let reply = socket.send(request)?;
+    let reply = socket.send(request)
+        .context("failed to send IPC request")?;
     reply.map_err(|e| anyhow::anyhow!("niri IPC error: {e}"))
 }
 
@@ -31,8 +33,7 @@ pub fn focus_workspace(idx: u8) -> anyhow::Result<()> {
         reference: niri_ipc::WorkspaceReferenceArg::Index(idx),
     }))?;
     match response {
-        Response::Ok => Ok(()),
-        Response::Error(e) => Err(anyhow::anyhow!("IPC error: {}", e)),
+        Response::Handled => Ok(()),
         _ => Err(anyhow::anyhow!("unexpected response type")),
     }
 }
@@ -40,8 +41,7 @@ pub fn focus_workspace(idx: u8) -> anyhow::Result<()> {
 pub fn spawn(command: Vec<String>) -> anyhow::Result<()> {
     let response = send_request(Request::Action(niri_ipc::Action::Spawn { command }))?;
     match response {
-        Response::Ok => Ok(()),
-        Response::Error(e) => Err(anyhow::anyhow!("IPC error: {}", e)),
+        Response::Handled => Ok(()),
         _ => Err(anyhow::anyhow!("unexpected response type")),
     }
 }
@@ -53,8 +53,7 @@ pub fn move_window_to_workspace(window_id: u64, workspace_idx: u8) -> anyhow::Re
         focus: true,
     }))?;
     match response {
-        Response::Ok => Ok(()),
-        Response::Error(e) => Err(anyhow::anyhow!("IPC error: {}", e)),
+        Response::Handled => Ok(()),
         _ => Err(anyhow::anyhow!("unexpected response type")),
     }
 }
@@ -62,12 +61,11 @@ pub fn move_window_to_workspace(window_id: u64, workspace_idx: u8) -> anyhow::Re
 pub fn move_floating_window(window_id: u64, x: i32, y: i32) -> anyhow::Result<()> {
     let response = send_request(Request::Action(niri_ipc::Action::MoveFloatingWindow {
         id: Some(window_id),
-        x: niri_ipc::PositionChange::Absolute(x),
-        y: niri_ipc::PositionChange::Absolute(y),
+        x: niri_ipc::PositionChange::SetFixed(x as f64),
+        y: niri_ipc::PositionChange::SetFixed(y as f64),
     }))?;
     match response {
-        Response::Ok => Ok(()),
-        Response::Error(e) => Err(anyhow::anyhow!("IPC error: {}", e)),
+        Response::Handled => Ok(()),
         _ => Err(anyhow::anyhow!("unexpected response type")),
     }
 }
@@ -77,8 +75,7 @@ pub fn toggle_floating(window_id: u64) -> anyhow::Result<()> {
         id: Some(window_id),
     }))?;
     match response {
-        Response::Ok => Ok(()),
-        Response::Error(e) => Err(anyhow::anyhow!("IPC error: {}", e)),
+        Response::Handled => Ok(()),
         _ => Err(anyhow::anyhow!("unexpected response type")),
     }
 }
@@ -88,8 +85,7 @@ pub fn focus_window(window_id: u64) -> anyhow::Result<()> {
         id: window_id,
     }))?;
     match response {
-        Response::Ok => Ok(()),
-        Response::Error(e) => Err(anyhow::anyhow!("IPC error: {}", e)),
+        Response::Handled => Ok(()),
         _ => Err(anyhow::anyhow!("unexpected response type")),
     }
 }

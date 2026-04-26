@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::process::Command;
 use xdg::BaseDirectories;
 
@@ -68,8 +68,9 @@ impl AppLauncher {
     }
 
     fn try_desktop_lookup(&self, app_id: &str) -> Option<Vec<String>> {
+        let data_home = BaseDirectories::new().ok()?.get_data_home();
         let data_dirs = vec![
-            BaseDirectories::new().ok()?.get_data_dir().to_path_buf(),
+            data_home,
             PathBuf::from("/usr/local/share"),
             PathBuf::from("/usr/share"),
         ];
