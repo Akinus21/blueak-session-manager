@@ -11,9 +11,38 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    outputs:
+      new_version: ${{ steps.version.outputs.new_version }}
 
     steps:
       - uses: actions/checkout@v4
+
+      - name: Fetch all tags
+        run: git fetch --tags
+
+      - name: Determine next version
+        id: version
+        run: |
+          # Find the highest existing tag
+          LAST_TAG=$(git tag --list 'v*' --sort=-v:refname | head -1 || echo "")
+          if [ -z "$LAST_TAG" ]; then
+            NEW_VERSION="0.00.1"
+          else
+            # Extract version number and increment
+            LAST_NUM="${LAST_TAG#v}"
+            MAJOR=$(echo $LAST_NUM | cut -d. -f1)
+            MINOR=$(echo $LAST_NUM | cut -d. -f2)
+            PATCH=$(echo $LAST_NUM | cut -d. -f3)
+            PATCH=$((PATCH + 1))
+            NEW_VERSION="$MAJOR.$MINOR.$PATCH"
+          fi
+          echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
+
+      - name: Update Cargo.toml version
+        run: |
+          NEW_VERSION="${{ steps.version.outputs.new_version }}"
+          sed -i 's/^version = ".*"$/version = "'$NEW_VERSION'"/' Cargo.toml
+          cat Cargo.toml
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
@@ -51,6 +80,45 @@ jobs:
           if-no-files-found: ignore
           retention-days: 30
 
+      - name: Create release
+        if: success() && github.ref == 'refs/heads/main'
+        run: |
+          NEW_VERSION="${{ steps.version.outputs.new_version }}"
+          TAG="v$NEW_VERSION"
+
+          # Create CHANGELOG.md if it doesn't exist, otherwise append
+          if [ ! -f CHANGELOG.md ]; then
+            echo "# Changelog\n\n## $NEW_VERSION" > CHANGELOG.md
+          else
+            sed -i "1s/^/# Changelog\n\n## $NEW_VERSION\n/" CHANGELOG.md
+          fi
+
+          # Update README.md version if it exists
+          if [ -f README.md ]; then
+            sed -i 's/version [0-9]\+\.[0-9]\+\.[0-9]\+/version '$NEW_VERSION'/' README.md
+          fi
+
+          # Commit changes
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Cargo.toml CHANGELOG.md README.md 2>/dev/null || true
+          git commit -m "release: v$NEW_VERSION" || true
+          git tag "$TAG"
+          git push origin main --tags
+
+      - name: Create GitHub Release
+        if: success() && github.ref == 'refs/heads/main'
+        uses: soft props/action-github@v1
+        with:
+          tag_name: v${{ steps.version.outputs.new_version }}
+          release_name: v${{ steps.version.outputs.new_version }}
+          files: target/release/blueak-session-manager
+          body_path: CHANGELOG.md
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Notify webhook on build completion
         if: always() && github.ref == 'refs/heads/main'
         run: |
@@ -78,7 +146,8 @@ jobs:
             --arg errors "$ERRORS" \
             --arg run_url "https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
             --arg sha "${{ github.sha }}" \
-            '{status: $status, errors: $errors, run_url: $run_url, sha: $sha}')
+            --arg version "${{ steps.version.outputs.new_version }}" \
+            '{status: $status, errors: $errors, run_url: $run_url, sha: $sha, version: $version}')
           SIG=$(echo -n "$PAYLOAD" | \
             openssl dgst -sha256 -hmac "${{ secrets.WEBHOOK_SECRET }}" | \
             awk '{print "sha256="$2}')
