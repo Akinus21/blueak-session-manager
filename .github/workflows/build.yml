@@ -120,6 +120,10 @@ jobs:
       - name: Notify webhook on build completion
         if: always() && github.ref == 'refs/heads/main'
         run: |
+          echo "=== Webhook Debug ==="
+          echo "WEBHOOK_URL: ${{ secrets.WEBHOOK_URL }}"
+          echo "WEBHOOK_SECRET set: ${{ secrets.WEBHOOK_SECRET != '' }}"
+          
           if [ -f build.log ]; then
             if grep -iE "error|failed" build.log > /dev/null 2>&1; then
               BUILD_STATUS="failure"
@@ -139,8 +143,7 @@ jobs:
             BUILD_STATUS="failure"
             ERRORS=$(cat build.log 2>/dev/null | tail -150 || echo "Build failed")
           fi
-          echo "Build status: $BUILD_STATUS"
-          echo "Errors: $ERRORS"
+          
           PAYLOAD=$(jq -n \
             --arg status "$BUILD_STATUS" \
             --arg errors "$ERRORS" \
@@ -148,14 +151,21 @@ jobs:
             --arg sha "${{ github.sha }}" \
             --arg version "${{ steps.version.outputs.new_version }}" \
             '{status: $status, errors: $errors, run_url: $run_url, sha: $sha, version: $version}')
+          
           echo "Payload: $PAYLOAD"
-          SIG=$(echo -n "$PAYLOAD" | \
-            openssl dgst -sha256 -hmac "${{ secrets.WEBHOOK_SECRET }}" | \
-            awk '{print "sha256="$2}')
+          
+          SECRET="${{ secrets.WEBHOOK_SECRET }}"
+          echo "Using secret: ${SECRET:0:4}..."
+          
+          SIG=$(echo -n "$PAYLOAD" | openssl dgst -sha256 -hmac "$SECRET" | awk '{print "sha256="$2}')
           echo "Signature: $SIG"
-          curl -fsSL -X POST \
+          
+          echo "Calling webhook..."
+          HTTP_CODE=$(curl -s -o response.txt -w "%{http_code}" -X POST \
             -H "Content-Type: application/json" \
             -H "X-GitHub-Event: build_complete" \
             -H "X-Hub-Signature-256: $SIG" \
             -d "$PAYLOAD" \
-            "${{ secrets.WEBHOOK_URL }}" || echo "Webhook call failed"
+            "${{ secrets.WEBHOOK_URL }}")
+          echo "HTTP status: $HTTP_CODE"
+          echo "Response: $(cat response.txt)"
