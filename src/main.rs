@@ -42,7 +42,12 @@ enum AppMapCommands {
 
 fn get_session_path() -> std::path::PathBuf {
     BaseDirectories::with_prefix("niri-session")
-        .map(|xdg| xdg.get_data_dir().join("niri-session/session.json"))
+        .map(|xdg| {
+            let mut path = xdg.get_data_dir().to_path_buf();
+            path.push("niri-session");
+            path.push("session.json");
+            path
+        })
         .unwrap_or_else(|_| std::path::PathBuf::from("~/.local/share/niri-session/session.json"))
 }
 
@@ -74,7 +79,7 @@ fn main() -> anyhow::Result<()> {
         }
         Commands::AppMap { sub } => match sub {
             AppMapCommands::Show => {
-                let launcher = app_launch::AppLauncher::new()?;
+                let _launcher = app_launch::AppLauncher::new()?;
                 println!("App map loaded (resolution order: override → desktop → flatpak → binary)");
                 Ok(())
             }

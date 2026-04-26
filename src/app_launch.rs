@@ -1,7 +1,6 @@
-use anyhow::Context;
 use std::collections::HashMap;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 use xdg::BaseDirectories;
 
@@ -14,7 +13,7 @@ impl AppLauncher {
         let mut overrides = HashMap::new();
 
         if let Ok(xdg) = BaseDirectories::with_prefix("niri-session") {
-            let map_path = xdg.get_config_filename("app-map.toml");
+            let map_path = xdg.get_config_file("app-map.toml");
             if map_path.exists() {
                 let content = fs::read_to_string(&map_path)?;
                 if let Ok(toml::Value::Table(table)) = toml::from_str(&content) {
@@ -70,7 +69,7 @@ impl AppLauncher {
 
     fn try_desktop_lookup(&self, app_id: &str) -> Option<Vec<String>> {
         let data_dirs = vec![
-            BaseDirectories::new().ok()?.get_data_home().to_path_buf(),
+            BaseDirectories::new().ok()?.get_data_dir().to_path_buf(),
             PathBuf::from("/usr/local/share"),
             PathBuf::from("/usr/share"),
         ];
@@ -111,7 +110,8 @@ impl AppLauncher {
             return exec_line.map(|e| self.clean_exec_line(e));
         }
 
-        let filename = PathBuf::from(content.lines().next()?.trim_start_matches("["));
+        let first_line = content.lines().next()?;
+        let filename = first_line.trim_start_matches('[');
         if filename == app_id {
             return exec_line.map(|e| self.clean_exec_line(e));
         }

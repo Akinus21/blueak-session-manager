@@ -1,8 +1,8 @@
-use serde::{Deserialize, Serialize};
+use anyhow::Context;
 use std::fs;
 use std::path::Path;
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Session {
     pub version: u32,
     pub saved_at: String,
@@ -10,14 +10,14 @@ pub struct Session {
     pub windows: Vec<SavedWindow>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SavedWorkspace {
     pub idx: u8,
     pub name: Option<String>,
     pub output: Option<String>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SavedWindow {
     pub app_id: String,
     pub title: String,
@@ -32,9 +32,10 @@ pub struct SavedWindow {
 
 impl Session {
     pub fn load(path: &Path) -> anyhow::Result<Self> {
-        let content = fs::read_to_string(path)?;
+        let content = fs::read_to_string(path)
+            .context("failed to read session file")?;
         let session: Session = serde_json::from_str(&content)
-            .context("failed to parse session file")?;
+            .with_context(|| "failed to parse session file".to_string())?;
         Ok(session)
     }
 

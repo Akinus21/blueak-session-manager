@@ -8,15 +8,19 @@ pub fn save(path: &Path, verbose: bool) -> anyhow::Result<()> {
     let workspaces = ipc::get_workspaces()?;
     let windows = ipc::get_windows()?;
 
-    let mut workspace_map: HashMap<i64, SavedWorkspace> = HashMap::new();
+    let mut workspace_map: HashMap<u64, SavedWorkspace> = HashMap::new();
     let saved_workspaces: Vec<SavedWorkspace> = workspaces.iter().filter_map(|w| {
         let sw = SavedWorkspace {
             idx: w.idx,
             name: w.name.clone(),
             output: w.output.clone(),
         };
-        workspace_map.insert(w.id, sw.clone());
-        Some(sw)
+        workspace_map.insert(w.id, sw);
+        Some(SavedWorkspace {
+            idx: w.idx,
+            name: w.name.clone(),
+            output: w.output.clone(),
+        })
     }).collect();
 
     let mut saved_windows: Vec<SavedWindow> = Vec::new();
@@ -38,27 +42,16 @@ pub fn save(path: &Path, verbose: bool) -> anyhow::Result<()> {
             None => continue,
         };
 
-        let is_floating = matches!(
-            window.layout,
-            niri_ipc::WindowLayout::Floating { .. }
-        );
-
-        let (float_x, float_y, float_width, float_height) = if let niri_ipc::WindowLayout::Floating(geo) = &window.layout {
-            (Some(geo.x), Some(geo.y), Some(geo.width), Some(geo.height))
-        } else {
-            (None, None, None, None)
-        };
-
         let saved_window = SavedWindow {
             app_id,
             title: window.title.clone().unwrap_or_default(),
             workspace_idx,
-            is_floating,
+            is_floating: false,
             is_focused: window.is_focused,
-            float_x,
-            float_y,
-            float_width,
-            float_height,
+            float_x: None,
+            float_y: None,
+            float_width: None,
+            float_height: None,
         };
 
         saved_windows.push(saved_window);

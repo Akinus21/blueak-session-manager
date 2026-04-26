@@ -1,6 +1,6 @@
 use crate::app_launch::AppLauncher;
 use crate::ipc;
-use crate::session::{SavedWindow, Session};
+use crate::session::Session;
 use std::collections::HashMap;
 use std::path::Path;
 use std::time::Duration;
@@ -51,7 +51,7 @@ pub fn restore(
     workspace_indices.sort();
 
     for ws_idx in workspace_indices {
-        if let Err(e) = ipc::focus_workspace(ws_idx as usize) {
+        if let Err(e) = ipc::focus_workspace(ws_idx) {
             log::warn!("failed to focus workspace {}: {}", ws_idx, e);
         }
         std::thread::sleep(Duration::from_millis(100));
@@ -110,6 +110,7 @@ pub fn restore(
 
     let mut remaining: Vec<(PendingWindow, usize)> = pending;
     let mut matched_windows: HashMap<usize, u64> = HashMap::new();
+    let matched_ids: &[u64] = &matched_windows.values().copied().collect::<Vec<_>>();
 
     while !remaining.is_empty() && start.elapsed() < timeout {
         std::thread::sleep(poll_interval);
@@ -122,12 +123,14 @@ pub fn restore(
             }
         };
 
+        let current_matched: Vec<u64> = matched_windows.values().copied().collect();
+
         let mut still_remaining = Vec::new();
 
         for (pending, original_idx) in remaining {
             let matching = windows.iter().find(|w| {
                 w.app_id.as_ref() == Some(&pending.app_id) &&
-                !matched_windows.values().contains(&w.id)
+                !current_matched.contains(&w.id)
             });
 
             if let Some(found) = matching {
@@ -156,8 +159,8 @@ pub fn restore(
         log::warn!("{} windows never appeared", remaining.len());
     }
 
-    if let Some(&(ref pending, idx)) = pending.iter().find(|(_, idx)| session.windows[*idx].is_focused) {
-        if let Some(&window_id) = matched_windows.get(&idx) {
+    if let Some(&(ref _pending, idx)) = pending.iter().find(|(_, idx)| session.windows[*idx].is_focused) {
+        if let Some(&window_id) = matched_windows.get(idx) {
             if let Err(e) = ipc::focus_window(window_id) {
                 log::warn!("failed to focus window: {}", e);
             }
