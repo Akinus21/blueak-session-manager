@@ -1,0 +1,15 @@
+[Unit]
+Description=Restore niri session state
+After=graphical-session.target niri.service
+PartOf=graphical-session.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=no
+ExecStart=%h/.local/bin/blueak-session-manager restore
+Environment="PATH=/usr/local/bin:/usr/bin:/bin:%h/.local/bin"
+PassEnvironment=NIRI_SOCKET WAYLAND_DISPLAY XDG_RUNTIME_DIR
+TimeoutStartSec=60
+
+[Install]
+WantedBy=graphical-session.target

@@ -1,0 +1,15 @@
+[Unit]
+Description=Save niri session state
+Before=niri.service
+DefaultDependencies=no
+After=graphical-session.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=no
+ExecStart=%h/.local/bin/blueak-session-manager save
+Environment="PATH=/usr/local/bin:/usr/bin:/bin:%h/.local/bin"
+PassEnvironment=NIRI_SOCKET
+
+[Install]
+WantedBy=graphical-session-pre.target
