@@ -11,38 +11,12 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
-    outputs:
-      new_version: ${{ steps.version.outputs.new_version }}
 
     steps:
       - uses: actions/checkout@v4
-
-      - name: Fetch all tags
-        run: git fetch --tags
-
-      - name: Determine next version
-        id: version
-        run: |
-          # Find the highest existing tag
-          LAST_TAG=$(git tag --list 'v*' --sort=-v:refname | head -1 || echo "")
-          if [ -z "$LAST_TAG" ]; then
-            NEW_VERSION="0.0.1"
-          else
-            # Extract version number and increment (avoid leading zeros)
-            LAST_NUM="${LAST_TAG#v}"
-            MAJOR=$(echo $LAST_NUM | cut -d. -f1)
-            MINOR=$(echo $LAST_NUM | cut -d. -f2)
-            PATCH=$(echo $LAST_NUM | cut -d. -f3)
-            PATCH=$((PATCH + 1))
-            NEW_VERSION="$MAJOR.$MINOR.$PATCH"
-          fi
-          echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
-
-      - name: Update Cargo.toml version
-        run: |
-          NEW_VERSION="${{ steps.version.outputs.new_version }}"
-          sed -i 's/^version = ".*"$/version = "'$NEW_VERSION'"/' Cargo.toml
-          cat Cargo.toml
+        with:
+          fetch-tags: true
+          fetch-depth: 0
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
@@ -50,7 +24,7 @@ jobs:
       - name: Install system dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libgtk-3-dev libxkbcommon-dev libwayland-dev pkg-config
+          sudo apt-get install -y libgtk-3-dev libxkbcommon-dev libwayland-dev pkg-config jq
 
       - name: Cache cargo
         uses: actions/cache@v4
@@ -59,7 +33,10 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}-${{ hashFiles('src/**') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+            ${{ runner.os }}-cargo-
 
       - name: Build
         id: build
@@ -68,105 +45,188 @@ jobs:
           cargo build --release 2>&1 | tee build.log
         shell: bash
 
+      - name: Verify binary
+        run: |
+          SIZE=$(stat -c%s target/release/blueak-session-manager)
+          echo "Binary size: $SIZE bytes"
+          if [ "$SIZE" -lt 10000 ]; then
+            echo "ERROR: Binary too small ($SIZE bytes), likely a cache or build issue"
+            exit 1
+          fi
+
       - name: Upload artifact
         if: success()
         uses: actions/upload-artifact@v4
         with:
           name: blueak-session-manager-build
-          path: |
-            target/release/
-            dist/
-            build/
-          if-no-files-found: ignore
+          path: target/release/blueak-session-manager
+          if-no-files-found: error
           retention-days: 30
 
-      - name: Create release
-        if: success() && github.ref == 'refs/heads/main'
+      - name: Compute new tag
+        if: success() && github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        id: tag
         run: |
-          NEW_VERSION="${{ steps.version.outputs.new_version }}"
-          TAG="v$NEW_VERSION"
+          git fetch --tags
+          PREV_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
+          VERSION=$(echo "$PREV_TAG" | sed 's/^v//')
+          MAJOR=$(echo "$VERSION" | cut -d. -f1 | sed 's/^0*//')
+          MINOR=$(echo "$VERSION" | cut -d. -f2 | sed 's/^0*//')
+          PATCH=$(echo "$VERSION" | cut -d. -f3 | sed 's/^0*//')
+          [ -z "$MAJOR" ] && MAJOR=0
+          [ -z "$MINOR" ] && MINOR=0
+          [ -z "$PATCH" ] && PATCH=0
+          while git rev-parse "v${MAJOR}.${MINOR}.${PATCH}" >/dev/null 2>&1; do
+            PATCH=$((10#$PATCH + 1))
+          done
+          NEW_TAG="v${MAJOR}.${MINOR}.${PATCH}"
+          echo "new_tag=$NEW_TAG" >> $GITHUB_OUTPUT
 
-          # Create CHANGELOG.md if it doesn't exist, otherwise append
-          if [ ! -f CHANGELOG.md ]; then
-            echo "# Changelog\n\n## $NEW_VERSION" > CHANGELOG.md
-          else
-            sed -i "1s/^/# Changelog\n\n## $NEW_VERSION\n/" CHANGELOG.md
-          fi
+      - name: Update Cargo.toml version
+        if: success() && github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        run: |
+          NEW_TAG="${{ steps.tag.outputs.new_tag }}"
+          VERSION="${NEW_TAG#v}"
+          awk -F'= ' '/^\[package\]/{p=1} p && /^version/{gsub(/"[^"]+"/,"\"'"$VERSION"'\""); p=0} 1' Cargo.toml > tmp && mv tmp Cargo.toml
+          git add Cargo.toml
+          git config --global user.email "aktags-bot@akinus21.com"
+          git config --global user.name "AkTags Bot"
+          git commit -m "chore: bump version to ${VERSION}"
 
-          # Update README.md version if it exists
-          if [ -f README.md ]; then
-            sed -i 's/version [0-9]\+\.[0-9]\+\.[0-9]\+/version '$NEW_VERSION'/' README.md
-          fi
-
-          # Commit changes
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add Cargo.toml CHANGELOG.md README.md 2>/dev/null || true
-          git commit -m "release: v$NEW_VERSION" || true
-          git tag "$TAG"
-          git push origin main --tags
-
-      - name: Create GitHub Release
-        if: success() && github.ref == 'refs/heads/main'
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: v${{ steps.version.outputs.new_version }}
-          files: target/release/blueak-session-manager
-          body_path: CHANGELOG.md
-          draft: false
-          prerelease: false
+      - name: Tag and create GitHub release with binary
+        if: success() && github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        id: release
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Notify webhook on build completion
-        if: always() && github.ref == 'refs/heads/main'
+          GH_TOKEN: ${{ secrets.TAP_TOKEN }}
         run: |
-          echo "=== Webhook Debug ==="
-          echo "WEBHOOK_URL: ${{ secrets.WEBHOOK_URL }}"
-          echo "WEBHOOK_SECRET set: ${{ secrets.WEBHOOK_SECRET != '' }}"
-          
-          if [ -f build.log ]; then
-            if grep -iE "error|failed" build.log > /dev/null 2>&1; then
-              BUILD_STATUS="failure"
-              ERRORS=$(tail -150 build.log)
-            else
-              BUILD_STATUS="success"
-              ERRORS=""
-            fi
-          else
-            BUILD_STATUS="failure"
-            ERRORS="Build log not found"
+          git config --global user.email "aktags-bot@akinus21.com"
+          git config --global user.name "AkTags Bot"
+
+          NEW_TAG="${{ steps.tag.outputs.new_tag }}"
+          BINARY="target/release/blueak-session-manager"
+
+          if [ ! -s "$BINARY" ]; then
+            echo "ERROR: Binary missing or empty at $BINARY"
+            exit 1
           fi
-          if [ "${{ job.status }}" = "success" ]; then
-            BUILD_STATUS="success"
-            ERRORS=""
-          elif [ "${{ job.status }}" = "failure" ]; then
-            BUILD_STATUS="failure"
-            ERRORS=$(cat build.log 2>/dev/null | tail -150 || echo "Build failed")
+
+          SHA256=$(sha256sum "$BINARY" | awk '{print $1}')
+          SIZE=$(stat -c%s "$BINARY")
+          echo "Binary size: $SIZE bytes"
+          echo "SHA256: $SHA256"
+
+          if [ "$SIZE" -lt 10000 ]; then
+            echo "ERROR: Binary too small"
+            exit 1
           fi
-          
-          PAYLOAD=$(jq -n \
-            --arg status "$BUILD_STATUS" \
-            --arg errors "$ERRORS" \
-            --arg run_url "https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
-            --arg sha "${{ github.sha }}" \
-            --arg version "${{ steps.version.outputs.new_version }}" \
-            '{status: $status, errors: $errors, run_url: $run_url, sha: $sha, version: $version}')
-          
-          echo "Payload: $PAYLOAD"
-          
-          SECRET="${{ secrets.WEBHOOK_SECRET }}"
-          echo "Using secret: ${SECRET:0:4}..."
-          
-          SIG=$(echo -n "$PAYLOAD" | openssl dgst -sha256 -hmac "$SECRET" | awk '{print "sha256="$2}')
-          echo "Signature: $SIG"
-          
-          echo "Calling webhook..."
-          HTTP_CODE=$(curl -s -o response.txt -w "%{http_code}" -X POST \
+
+          git tag -a "$NEW_TAG" -m "Release $NEW_TAG"
+          git push origin "$NEW_TAG"
+
+          gh release create "$NEW_TAG" \
+            --title "$NEW_TAG" \
+            --notes "" \
+            "$BINARY#blueak-session-manager"
+
+          ASSET_COUNT=$(gh release view "$NEW_TAG" --json assets --jq '.assets | length')
+          echo "Assets uploaded: $ASSET_COUNT"
+          if [ "$ASSET_COUNT" -lt 1 ]; then
+            echo "ERROR: No assets found on release after upload"
+            exit 1
+          fi
+
+          echo "sha256=$SHA256" >> $GITHUB_OUTPUT
+          echo "new_tag=$NEW_TAG" >> $GITHUB_OUTPUT
+
+      - name: Update homebrew tap
+        if: success() && github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        env:
+          TAP_TOKEN: ${{ secrets.TAP_TOKEN }}
+        run: |
+          git config --global user.email "aktags-bot@akinus21.com"
+          git config --global user.name "AkTags Bot"
+
+          NEW_TAG="${{ steps.tag.outputs.new_tag }}"
+          SHA256="${{ steps.release.outputs.sha256 }}"
+          BINARY_URL="https://github.com/Akinus21/blueak-session-manager/releases/download/${NEW_TAG}/blueak-session-manager"
+
+          git clone https://x-access-token:${TAP_TOKEN}@github.com/Akinus21/homebrew-tap.git /tmp/homebrew-tap
+          cd /tmp/homebrew-tap
+
+          cat > Formula/blueak-session-manager.rb <<EOF
+          class BlueakSessionManager < Formula
+            desc "Saves and restores niri compositor session state"
+            homepage "https://github.com/Akinus21/blueak-session-manager"
+            version "${NEW_TAG#v}"
+            url "${BINARY_URL}"
+            sha256 "${SHA256}"
+            def install
+              bin.install "blueak-session-manager"
+            end
+            test do
+              system bin/"blueak-session-manager", "--version"
+            end
+          end
+          EOF
+
+          git add Formula/blueak-session-manager.rb
+          git commit -m "Update blueak-session-manager to ${NEW_TAG}"
+          git push
+
+      - name: Notify webhook on failure
+        if: failure() && github.ref == 'refs/heads/main'
+        env:
+          WEBHOOK_SECRET: ${{ secrets.WEBHOOK_SECRET }}
+        run: |
+          RUN_URL="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          SHA="${{ github.sha }}"
+          COMMIT_MSG=$(git log -1 --pretty=format:"%s" "$SHA" 2>/dev/null || echo "unknown")
+          ERRORS=$(cat build.log 2>/dev/null | tail -200 | jq -Rs . || echo '"build log not found"')
+
+          PAYLOAD=$(jq -cn \
+            --arg run_url "$RUN_URL" \
+            --arg sha "$SHA" \
+            --arg commit_msg "$COMMIT_MSG" \
+            --arg ref "${{ github.ref_name }}" \
+            --arg actor "${{ github.actor }}" \
+            --argjson errors "$ERRORS" \
+            '{run_url:$run_url,sha:$sha,commit_msg:$commit_msg,ref:$ref,actor:$actor,errors:$errors}')
+
+          SIG=$(printf '%s' "$PAYLOAD" | \
+            openssl dgst -sha256 -hmac "$WEBHOOK_SECRET" | \
+            awk '{print "sha256="$2}')
+
+          curl -fsSL -X POST \
             -H "Content-Type: application/json" \
-            -H "X-GitHub-Event: build_complete" \
+            -H "X-GitHub-Event: build_failure" \
             -H "X-Hub-Signature-256: $SIG" \
             -d "$PAYLOAD" \
-            "${{ secrets.WEBHOOK_URL }}")
-          echo "HTTP status: $HTTP_CODE"
-          echo "Response: $(cat response.txt)"
+            "${{ secrets.WEBHOOK_URL }}" || true
+
+      - name: Notify webhook on success
+        if: success() && github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        env:
+          WEBHOOK_SECRET: ${{ secrets.WEBHOOK_SECRET }}
+        run: |
+          RUN_URL="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          SHA="${{ github.sha }}"
+          COMMIT_MSG=$(git log -1 --pretty=format:"%s" "$SHA" 2>/dev/null || echo "unknown")
+
+          PAYLOAD=$(jq -cn \
+            --arg run_url "$RUN_URL" \
+            --arg sha "$SHA" \
+            --arg commit_msg "$COMMIT_MSG" \
+            --arg ref "${{ github.ref_name }}" \
+            --arg actor "${{ github.actor }}" \
+            '{event:"build_success",run_url:$run_url,sha:$sha,commit_msg:$commit_msg,ref:$ref,actor:$actor}')
+
+          SIG=$(printf '%s' "$PAYLOAD" | \
+            openssl dgst -sha256 -hmac "$WEBHOOK_SECRET" | \
+            awk '{print "sha256="$2}')
+
+          curl -fsSL -X POST \
+            -H "Content-Type: application/json" \
+            -H "X-GitHub-Event: build_success" \
+            -H "X-Hub-Signature-256: $SIG" \
+            -d "$PAYLOAD" \
+            "${{ secrets.WEBHOOK_URL }}" || true
