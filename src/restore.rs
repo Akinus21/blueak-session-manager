@@ -110,7 +110,9 @@ pub fn restore(
 
     let mut remaining: Vec<(PendingWindow, usize)> = pending;
     let mut matched_windows: HashMap<usize, u64> = HashMap::new();
-    let matched_ids: &[u64] = &matched_windows.values().copied().collect::<Vec<_>>();
+
+    let focused_window_idx = session.windows.iter()
+        .position(|w| w.is_focused);
 
     while !remaining.is_empty() && start.elapsed() < timeout {
         std::thread::sleep(poll_interval);
@@ -159,7 +161,7 @@ pub fn restore(
         log::warn!("{} windows never appeared", remaining.len());
     }
 
-    if let Some(&(ref _pending, idx)) = pending.iter().find(|(_, idx)| session.windows[*idx].is_focused) {
+    if let Some(idx) = focused_window_idx {
         if let Some(&window_id) = matched_windows.get(&idx) {
             if let Err(e) = ipc::focus_window(window_id) {
                 log::warn!("failed to focus window: {}", e);
