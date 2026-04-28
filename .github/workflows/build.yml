@@ -154,32 +154,32 @@ jobs:
           echo "https://x-access-token:${TAP_TOKEN}@github.com" >> ~/.git-credentials
 
           cat > Formula/blueak-session-manager.rb <<'FORMULA_EOF'
-class BlueakSessionManager < Formula
-  desc "Saves and restores niri compositor session state"
-  homepage "https://github.com/Akinus21/blueak-session-manager"
-  version "VERSION"
-  url "URL"
-  sha256 "SHA256"
+          class BlueakSessionManager < Formula
+            desc "Saves and restores niri compositor session state"
+            homepage "https://github.com/Akinus21/blueak-session-manager"
+            version "VERSION"
+            url "URL"
+            sha256 "SHA256"
 
-  def install
-    bin.install "blueak-session-manager"
-  end
+            def install
+              bin.install "blueak-session-manager"
+            end
 
-  def post_install
-    systemd_dir = "#{ENV["HOME"]}/.config/systemd/user"
-    require "fileutils"
-    FileUtils.mkdir_p(systemd_dir)
+            def post_install
+              systemd_dir = "#{ENV["HOME"]}/.config/systemd/user"
+              require "fileutils"
+              FileUtils.mkdir_p(systemd_dir)
 
-    File.write("#{systemd_dir}/blueak-session-save.service", "[Unit]\nDescription=Save niri session state\nBefore=niri.service\nDefaultDependencies=no\nAfter=graphical-session.target\n\n[Service]\nType=oneshot\nRemainAfterExit=no\nExecStart=#{bin}/blueak-session-manager save\nEnvironment=\"PATH=/usr/local/bin:/usr/bin:/bin:#{bin}\"\nPassEnvironment=NIRI_SOCKET\n\n[Install]\nWantedBy=graphical-session-pre.target\n")
+              File.write("#{systemd_dir}/blueak-session-save.service", "[Unit]\nDescription=Save niri session state\nBefore=niri.service\nDefaultDependencies=no\nAfter=graphical-session.target\n\n[Service]\nType=oneshot\nRemainAfterExit=no\nExecStart=#{bin}/blueak-session-manager save\nEnvironment=\"PATH=/usr/local/bin:/usr/bin:/bin:#{bin}\"\nPassEnvironment=NIRI_SOCKET\n\n[Install]\nWantedBy=graphical-session-pre.target\n")
 
-    File.write("#{systemd_dir}/blueak-session-restore.service", "[Unit]\nDescription=Restore niri session state\nAfter=graphical-session.target niri.service\nPartOf=graphical-session.target\n\n[Service]\nType=oneshot\nRemainAfterExit=no\nExecStart=#{bin}/blueak-session-manager restore\nEnvironment=\"PATH=/usr/local/bin:/usr/bin:/bin:#{bin}\"\nPassEnvironment=NIRI_SOCKET WAYLAND_DISPLAY XDG_RUNTIME_DIR\nTimeoutStartSec=60\n\n[Install]\nWantedBy=graphical-session.target\n")
-  end
+              File.write("#{systemd_dir}/blueak-session-restore.service", "[Unit]\nDescription=Restore niri session state\nAfter=graphical-session.target niri.service\nPartOf=graphical-session.target\n\n[Service]\nType=oneshot\nRemainAfterExit=no\nExecStart=#{bin}/blueak-session-manager restore\nEnvironment=\"PATH=/usr/local/bin:/usr/bin:/bin:#{bin}\"\nPassEnvironment=NIRI_SOCKET WAYLAND_DISPLAY XDG_RUNTIME_DIR\nTimeoutStartSec=60\n\n[Install]\nWantedBy=graphical-session.target\n")
+            end
 
-  test do
-    system bin/"blueak-session-manager", "--version"
-  end
-end
-FORMULA_EOF
+            test do
+              system bin/"blueak-session-manager", "--version"
+            end
+          end
+          FORMULA_EOF
 
           sed -i 's|VERSION|'"${NEW_TAG#v}"'|g' Formula/blueak-session-manager.rb
           sed -i 's|URL|'"${BINARY_URL}"'|g' Formula/blueak-session-manager.rb
