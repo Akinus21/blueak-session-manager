@@ -165,7 +165,7 @@ jobs:
               bin.install "blueak-session-manager"
             end
 
-            def post_install
+def post_install
               systemd_dir = ENV["HOME"] + "/.config/systemd/user"
               mkdir_p systemd_dir
 
@@ -208,9 +208,15 @@ jobs:
               (systemd_dir / "blueak-session-save.service").write save_service
               (systemd_dir / "blueak-session-restore.service").write restore_service
 
-              system("systemctl", "--user", "daemon-reload")
-              system("systemctl", "--user", "enable", "blueak-session-save.service", "blueak-session-restore.service")
-              system("systemctl", "--user", "start", "blueak-session-save.service", "blueak-session-restore.service")
+              puts "\n========================================\n". + \\
+                   "Installed systemd services to:\n" + \\
+                   "  #{systemd_dir}/blueak-session-save.service\n" + \\
+                   "  #{systemd_dir}/blueak-session-restore.service\n" + \\
+                   "\nTo enable, run:\n" + \\
+                   "  systemctl --user daemon-reload\n" + \\
+                   "  systemctl --user enable blueak-session-save.service blueak-session-restore.service\n" + \\
+                   "  systemctl --user start blueak-session-save.service blueak-session-restore.service\n" + \\
+                   "========================================\n"
             end
 
             test do
