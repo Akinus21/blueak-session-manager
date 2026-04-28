@@ -208,15 +208,16 @@ def post_install
               (systemd_dir / "blueak-session-save.service").write save_service
               (systemd_dir / "blueak-session-restore.service").write restore_service
 
-              puts "\n========================================\n". + \\
-                   "Installed systemd services to:\n" + \\
-                   "  #{systemd_dir}/blueak-session-save.service\n" + \\
-                   "  #{systemd_dir}/blueak-session-restore.service\n" + \\
-                   "\nTo enable, run:\n" + \\
-                   "  systemctl --user daemon-reload\n" + \\
-                   "  systemctl --user enable blueak-session-save.service blueak-session-restore.service\n" + \\
-                   "  systemctl --user start blueak-session-save.service blueak-session-restore.service\n" + \\
-                   "========================================\n"
+              puts "\n========================================"
+              puts "Systemd services installed to:"
+              puts "  #{systemd_dir}/blueak-session-save.service"
+              puts "  #{systemd_dir}/blueak-session-restore.service"
+              puts ""
+              puts "To enable, run these commands manually:"
+              puts "  systemctl --user daemon-reload"
+              puts "  systemctl --user enable blueak-session-save.service blueak-session-restore.service"
+              puts "  systemctl --user start blueak-session-save.service blueak-session-restore.service"
+              puts "========================================\n"
             end
 
             test do
