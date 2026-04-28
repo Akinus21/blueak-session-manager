@@ -165,7 +165,7 @@ jobs:
               bin.install "blueak-session-manager"
             end
 
-def post_install
+            def post_install
               systemd_dir = ENV["HOME"] + "/.config/systemd/user"
               mkdir_p systemd_dir
 
