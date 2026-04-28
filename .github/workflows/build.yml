@@ -157,9 +157,9 @@ jobs:
           class BlueakSessionManager < Formula
             desc "Saves and restores niri compositor session state"
             homepage "https://github.com/Akinus21/blueak-session-manager"
-            version "#{VERSION_PLACEHOLDER}"
-            url "#{URL_PLACEHOLDER}"
-            sha256 "#{SHA256_PLACEHOLDER}"
+            version "VERSION"
+            url "URL"
+            sha256 "SHA256"
 
             def install
               bin.install "blueak-session-manager"
@@ -219,10 +219,9 @@ jobs:
           end
           FORMULA_EOF
 
-          # Replace placeholders with actual values
-          sed -i 's|VERSION_PLACEHOLDER|'"${NEW_TAG#v}"'|g' Formula/blueak-session-manager.rb
-          sed -i 's|URL_PLACEHOLDER|'"${BINARY_URL}"'|g' Formula/blueak-session-manager.rb
-          sed -i 's|SHA256_PLACEHOLDER|'"${SHA256}"'|g' Formula/blueak-session-manager.rb
+          sed -i 's|VERSION|'"${NEW_TAG#v}"'|g' Formula/blueak-session-manager.rb
+          sed -i 's|URL|'"${BINARY_URL}"'|g' Formula/blueak-session-manager.rb
+          sed -i 's|SHA256|'"${SHA256}"'|g' Formula/blueak-session-manager.rb
 
           git add Formula/blueak-session-manager.rb
           git commit -m "Update blueak-session-manager to ${NEW_TAG}"
