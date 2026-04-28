@@ -153,21 +153,76 @@ jobs:
           git config --global credential.helper store
           echo "https://x-access-token:${TAP_TOKEN}@github.com" >> ~/.git-credentials
 
-          cat > Formula/blueak-session-manager.rb <<EOF
+          cat > Formula/blueak-session-manager.rb <<'FORMULA_EOF'
           class BlueakSessionManager < Formula
             desc "Saves and restores niri compositor session state"
             homepage "https://github.com/Akinus21/blueak-session-manager"
-            version "${NEW_TAG#v}"
-            url "${BINARY_URL}"
-            sha256 "${SHA256}"
+            version "#{VERSION_PLACEHOLDER}"
+            url "#{URL_PLACEHOLDER}"
+            sha256 "#{SHA256_PLACEHOLDER}"
+
             def install
               bin.install "blueak-session-manager"
             end
+
+            def post_install
+              systemd_dir = ENV["HOME"] + "/.config/systemd/user"
+              mkdir_p systemd_dir
+
+              save_service = <<~EOS
+                [Unit]
+                Description=Save niri session state
+                Before=niri.service
+                DefaultDependencies=no
+                After=graphical-session.target
+
+                [Service]
+                Type=oneshot
+                RemainAfterExit=no
+                ExecStart=#{bin}/blueak-session-manager save
+                Environment="PATH=/usr/local/bin:/usr/bin:/bin:#{bin}"
+                PassEnvironment=NIRI_SOCKET
+
+                [Install]
+                WantedBy=graphical-session-pre.target
+              EOS
+
+              restore_service = <<~EOS
+                [Unit]
+                Description=Restore niri session state
+                After=graphical-session.target niri.service
+                PartOf=graphical-session.target
+
+                [Service]
+                Type=oneshot
+                RemainAfterExit=no
+                ExecStart=#{bin}/blueak-session-manager restore
+                Environment="PATH=/usr/local/bin:/usr/bin:/bin:#{bin}"
+                PassEnvironment=NIRI_SOCKET WAYLAND_DISPLAY XDG_RUNTIME_DIR
+                TimeoutStartSec=60
+
+                [Install]
+                WantedBy=graphical-session.target
+              EOS
+
+              (systemd_dir / "blueak-session-save.service").write save_service
+              (systemd_dir / "blueak-session-restore.service").write restore_service
+
+              system("systemctl", "--user", "daemon-reload")
+              system("systemctl", "--user", "enable", "blueak-session-save.service", "blueak-session-restore.service")
+              system("systemctl", "--user", "start", "blueak-session-save.service", "blueak-session-restore.service")
+            end
+
             test do
               system bin/"blueak-session-manager", "--version"
             end
           end
-          EOF
+          FORMULA_EOF
+
+          # Replace placeholders with actual values
+          sed -i 's|VERSION_PLACEHOLDER|'"${NEW_TAG#v}"'|g' Formula/blueak-session-manager.rb
+          sed -i 's|URL_PLACEHOLDER|'"${BINARY_URL}"'|g' Formula/blueak-session-manager.rb
+          sed -i 's|SHA256_PLACEHOLDER|'"${SHA256}"'|g' Formula/blueak-session-manager.rb
 
           git add Formula/blueak-session-manager.rb
           git commit -m "Update blueak-session-manager to ${NEW_TAG}"
